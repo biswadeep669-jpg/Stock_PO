@@ -162,9 +162,20 @@ def optimize_hrp(train_returns):
     corr = train_returns.corr().clip(-1, 1)
 
     # López de Prado correlation distance.
-    distance = np.sqrt(np.maximum(0, (1 - corr) / 2))
-    np.fill_diagonal(distance.values, 0)
-    condensed = squareform(distance.values, checks=False)
+    # Convert to an independent, writable NumPy array before modifying the diagonal.
+    # Some pandas/NumPy combinations expose DataFrame.values as read-only, which
+    # can otherwise raise: "underlying array is read-only" in np.fill_diagonal.
+    corr_values = corr.to_numpy(dtype=float, copy=True)
+    distance_values = np.sqrt(np.maximum(0.0, (1.0 - corr_values) / 2.0))
+    np.fill_diagonal(distance_values, 0.0)
+
+    if not np.isfinite(distance_values).all():
+        raise ValueError(
+            "The HRP correlation-distance matrix contains NaN or infinite values. "
+            "Check for stocks with constant or insufficient return observations."
+        )
+
+    condensed = squareform(distance_values, checks=False)
     link = linkage(condensed, method="single")
 
     # Quasi-diagonalization: order leaves according to the dendrogram.
@@ -447,9 +458,10 @@ st.markdown(
 )
 
 st.warning(
-    "Research limitation: the default ten stocks are selected using their NIFTY 50 index "
-    "weights as of 30-Sep-2026. Because this selection date is later than the April–October "
-    "2026 test window, the experiment has look-ahead / survivorship-selection bias. For a "
-    "strictly unbiased historical backtest, select the top ten constituents using information "
-    "available before the test period (for example, 31-Mar-2026), and preserve that universe."
+    "Research limitation: the default ten-stock universe is not reconstructed from "
+    "point-in-time NIFTY 50 constituent weights. Using a universe selected after the "
+    "start of the May–October 2026 test window can introduce look-ahead / survivorship "
+    "bias. For a strictly unbiased historical backtest, select the top ten constituents "
+    "using information available before the test period (for example, 30-Apr-2026), "
+    "and keep that universe fixed."
 )
